@@ -13,8 +13,10 @@ export class Location {
 }
 
 export interface GetCurrentPositionOptions {
-  enableHighAccuracy: boolean;
-  timeout: number;
+  enableHighAccuracy?: boolean;
+  desiredAccuracy?: number;
+  desiredRecency?: number;
+  timeout?: number;
 }
 
 export type LocationErrorCode =

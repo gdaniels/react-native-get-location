@@ -38,8 +38,13 @@ import com.facebook.react.bridge.WritableNativeMap;
 
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.TimeUnit;
 
 public class GetLocation {
+    private static String ENABLE_HIGH_ACCURACY = "enableHighAccuracy";
+    private static String TIMEOUT = "timeout";
+    private static String DESIRED_ACCURACY = "desiredAccuracy";
+    private static String DESIRED_RECENCY = "desiredRecency";
 
     private final LocationManager locationManager;
 
@@ -59,8 +64,13 @@ public class GetLocation {
                 return;
             }
 
-            boolean enableHighAccuracy = options.hasKey("enableHighAccuracy") && options.getBoolean("enableHighAccuracy");
-            long timeout = options.hasKey("timeout") ? (long) options.getDouble("timeout") : 0;
+            boolean enableHighAccuracy = options.hasKey(ENABLE_HIGH_ACCURACY)
+                    && options.getBoolean(ENABLE_HIGH_ACCURACY);
+            long timeout = options.hasKey(TIMEOUT) ? (long) options.getDouble(TIMEOUT) : 0;
+            final float desiredAccuracyMeters = options.hasKey(DESIRED_ACCURACY) ? (float) options.getDouble(DESIRED_ACCURACY)
+                    : Float.MAX_VALUE;
+            final long desiredRecency = options.hasKey(DESIRED_RECENCY) ? (long) options.getDouble(DESIRED_RECENCY)
+                    : TimeUnit.HOURS.toMillis(1);
 
             Criteria criteria = new Criteria();
             criteria.setAccuracy(enableHighAccuracy ? Criteria.ACCURACY_FINE : Criteria.ACCURACY_COARSE);
@@ -71,19 +81,22 @@ public class GetLocation {
                 @Override
                 public synchronized void onLocationChanged(Location location) {
                     if (location != null && !locationFound) {
-                        locationFound = true;
-                        WritableNativeMap resultLocation = new WritableNativeMap();
-                        resultLocation.putString("provider", location.getProvider());
-                        resultLocation.putDouble("latitude", location.getLatitude());
-                        resultLocation.putDouble("longitude", location.getLongitude());
-                        resultLocation.putDouble("accuracy", location.getAccuracy());
-                        resultLocation.putDouble("altitude", location.getAltitude());
-                        resultLocation.putDouble("speed", location.getSpeed());
-                        resultLocation.putDouble("bearing", location.getBearing());
-                        resultLocation.putDouble("time", location.getTime());
-                        promise.resolve(resultLocation);
-                        stop();
-                        clearReferences();
+                        if ((location.getAccuracy() <= desiredAccuracyMeters)
+                                && (location.getTime() >= System.currentTimeMillis() - desiredRecency)) {
+                            locationFound = true;
+                            WritableNativeMap resultLocation = new WritableNativeMap();
+                            resultLocation.putString("provider", location.getProvider());
+                            resultLocation.putDouble("latitude", location.getLatitude());
+                            resultLocation.putDouble("longitude", location.getLongitude());
+                            resultLocation.putDouble("accuracy", location.getAccuracy());
+                            resultLocation.putDouble("altitude", location.getAltitude());
+                            resultLocation.putDouble("speed", location.getSpeed());
+                            resultLocation.putDouble("bearing", location.getBearing());
+                            resultLocation.putDouble("time", location.getTime());
+                            promise.resolve(resultLocation);
+                            stop();
+                            clearReferences();
+                        }
                     }
                 }
 
@@ -161,8 +174,8 @@ public class GetLocation {
 
     private boolean isLocationEnabled() {
         try {
-            return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
-                    locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
+            return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
+                    || locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
         } catch (Exception ex) {
             ex.printStackTrace();
         }

@@ -32,6 +32,7 @@ CLLocationManager* mLocationManager;
 RCTPromiseResolveBlock mResolve;
 RCTPromiseRejectBlock mReject;
 double mTimeout;
+double mDesiredAccuracyMeters;
 
 RCT_EXPORT_METHOD(getCurrentPosition: (NSDictionary*) options
                   promise: (RCTPromiseResolveBlock) resolve
@@ -50,6 +51,7 @@ RCT_EXPORT_METHOD(getCurrentPosition: (NSDictionary*) options
             
             bool enableHighAccuracy = [RCTConvert BOOL:options[@"enableHighAccuracy"]];
             double timeout = [RCTConvert double:options[@"timeout"]];
+            double desiredAccuracyMeters = MAX([RCTConvert double:options[@"desiredAccuracy"]], DBL_MAX);
             
             CLLocationManager *locationManager = [[CLLocationManager alloc] init];
             locationManager.delegate = self;
@@ -60,6 +62,7 @@ RCT_EXPORT_METHOD(getCurrentPosition: (NSDictionary*) options
             mReject = reject;
             mLocationManager = locationManager;
             mTimeout = timeout;
+            mDesiredAccuracyMeters = desiredAccuracyMeters;
             
             if ([self isAuthorized]) {
                 [self startUpdatingLocation];
@@ -103,28 +106,34 @@ RCT_EXPORT_METHOD(openAppSettings: (RCTPromiseResolveBlock)resolve
 }
 
 - (void) locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray<CLLocation *> *)locations {
-    [manager stopUpdatingLocation];
-    if (locations.count > 0 && mResolve != nil) {
-        if (mTimer != nil) {
-            [mTimer invalidate];
-        }
-        
-        CLLocation* location = locations[0];
-        
-        NSDictionary* locationResult = @{
-            @"latitude": @(location.coordinate.latitude),
-            @"longitude": @(location.coordinate.longitude),
-            @"altitude": @(location.altitude),
-            @"speed": @(location.speed),
-            @"accuracy": @(location.horizontalAccuracy),
-            @"time": @(location.timestamp.timeIntervalSince1970 * 1000),
-            @"verticalAccuracy": @(location.verticalAccuracy),
-            @"course": @(location.course),
-        };
-        
-        mResolve(locationResult);
+    if (mResolve == nil) {
+        return;
     }
-    [self clearReferences];
+
+    for (CLLocation* location in locations) {
+        if (@(location.horizontalAccuracy).doubleValue <= mDesiredAccuracyMeters) {
+            // Found one that's accurate enough, accept it and cancel updates/timeout
+            [manager stopUpdatingLocation];
+            if (mTimer != nil) {
+                [mTimer invalidate];
+            }
+
+            NSDictionary* locationResult = @{
+                @"latitude": @(location.coordinate.latitude),
+                @"longitude": @(location.coordinate.longitude),
+                @"altitude": @(location.altitude),
+                @"speed": @(location.speed),
+                @"accuracy": @(location.horizontalAccuracy),
+                @"time": @(location.timestamp.timeIntervalSince1970 * 1000),
+                @"verticalAccuracy": @(location.verticalAccuracy),
+                @"course": @(location.course),
+            };
+        
+            mResolve(locationResult);
+            [self clearReferences];
+            return;
+        }
+    }
 }
 
 - (void) locationManager:(CLLocationManager *)manager didFailWithError:(NSError *)error {
